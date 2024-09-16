@@ -17,7 +17,7 @@
 Fine-tuning a 🤗 Transformers model on multiple choice relying on the accelerate library without using a Trainer.
 """
 # You can also adapt this script on your own multiple choice task. Pointers for this are left as comments.
-
+import pdb
 import argparse
 import json
 import logging
@@ -66,6 +66,12 @@ MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Finetune a transformers model on a multiple choice task")
+    parser.add_argument(
+        "--context_file",
+        type=str,
+        default=None,
+        help="A csv or a json file containing the context data."
+    )
     parser.add_argument(
         "--dataset_name",
         type=str,
@@ -362,6 +368,12 @@ def main():
             data_files["validation"] = args.validation_file
             extension = args.validation_file.split(".")[-1]
         raw_datasets = load_dataset(extension, data_files=data_files)
+        
+        #TODO: Load context.json
+        if args.context_file is not None:
+            with open(args.context_file, 'r') as f: 
+                contexts = json.load(f)
+
     # Trim a number of training examples
     if args.debug:
         for split in raw_datasets.keys():
@@ -428,21 +440,36 @@ def main():
     padding = "max_length" if args.pad_to_max_length else False
 
     def preprocess_function(examples):
-        first_sentences = [[context] * 4 for context in examples[context_name]]
-        question_headers = examples[question_header_name]
-        second_sentences = [
-            [f"{header} {examples[end][i]}" for end in ending_names] for i, header in enumerate(question_headers)
-        ]
-        labels = examples[label_column_name]
+        # first_sentences = [[context] * 4 for context in examples[context_name]]
+        # question_headers = examples[question_header_name]
+        # second_sentences = [
+        #     [f"{header} {examples[end][i]}" for end in ending_names] for i, header in enumerate(question_headers)
+        # ]
+        # labels = examples[label_column_name]
+        
+        questions = [[question]*4 for question in examples["question"]]
+        answers = [[contexts[option] for option in options] for options in examples["paragraphs"]]
+        labels = [examples["paragraphs"][i].index(examples["relevant"][i]) for i in range(len(examples["id"]))]
 
         # Flatten out
-        first_sentences = list(chain(*first_sentences))
-        second_sentences = list(chain(*second_sentences))
+        # first_sentences = list(chain(*first_sentences))
+        # second_sentences = list(chain(*second_sentences))
+        
+        questions = list(chain(*questions))
+        answers = list(chain(*answers)) 
 
         # Tokenize
+        # tokenized_examples = tokenizer(
+        #     first_sentences,
+        #     second_sentences,
+        #     max_length=args.max_seq_length,
+        #     padding=padding,
+        #     truncation=True,
+        # )
+        
         tokenized_examples = tokenizer(
-            first_sentences,
-            second_sentences,
+            questions,
+            answers,
             max_length=args.max_seq_length,
             padding=padding,
             truncation=True,
