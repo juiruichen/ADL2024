@@ -1,5 +1,8 @@
 # Chinese Extractive Question Answering
 
+### Data
+Data can be downloaded on [Kaggle](https://www.kaggle.com/competitions/ntu-adl-2024-hw-1-chinese-extractive-qa#).
+
 ### Problems
 - problem 1
     ```
