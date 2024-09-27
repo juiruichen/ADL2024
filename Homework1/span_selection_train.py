@@ -17,7 +17,7 @@
 Fine-tuning a 🤗 Transformers model for question answering using 🤗 Accelerate.
 """
 # You can also adapt this script on your own question answering task. Pointers for this are left as comments.
-
+import pdb
 import argparse
 import json
 import logging
@@ -92,6 +92,12 @@ def save_prefixed_metrics(results, output_dir, file_name: str = "all_results.jso
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Finetune a transformers model on a Question Answering task")
+    parser.add_argument(
+        "--context_file",
+        type=str,
+        default=None,
+        help="A csv or a json file containing the context data."
+    )
     parser.add_argument(
         "--dataset_name",
         type=str,
@@ -341,7 +347,7 @@ def main():
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
-    send_example_telemetry("run_qa_no_trainer", args)
+    # send_example_telemetry("run_qa_no_trainer", args)
 
     # Initialize the accelerator. We will let the accelerator handle device placement for us in this example.
     # If we're using tracking, we also need to initialize it here and it will by default pick up all supported trackers
@@ -414,10 +420,16 @@ def main():
         if args.validation_file is not None:
             data_files["validation"] = args.validation_file
             extension = args.validation_file.split(".")[-1]
-        if args.test_file is not None:
-            data_files["test"] = args.test_file
-            extension = args.test_file.split(".")[-1]
-        raw_datasets = load_dataset(extension, data_files=data_files, field="data")
+        # if args.test_file is not None:
+        #     data_files["test"] = args.test_file
+        #     extension = args.test_file.split(".")[-1]
+        raw_datasets = load_dataset(extension, data_files=data_files)
+        
+        #TODO: Load context.json
+        if args.context_file is not None:
+            with open(args.context_file, 'r') as f: 
+                contexts = json.load(f)
+                
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.
 
@@ -464,9 +476,12 @@ def main():
 
     column_names = raw_datasets["train"].column_names
 
-    question_column_name = "question" if "question" in column_names else column_names[0]
-    context_column_name = "context" if "context" in column_names else column_names[1]
-    answer_column_name = "answers" if "answers" in column_names else column_names[2]
+    # question_column_name = "question" if "question" in column_names else column_names[0]
+    # context_column_name = "context" if "context" in column_names else column_names[1]
+    # answer_column_name = "answers" if "answers" in column_names else column_names[2]
+    question_column_name = "question"
+    answer_column_name = "answer"
+    context_column_name = "context"
 
     # Padding side determines if we do (question|context) or (context|question).
     pad_on_right = tokenizer.padding_side == "right"
@@ -485,13 +500,30 @@ def main():
         # truncation of the context fail (the tokenized question will take a lots of space). So we remove that
         # left whitespace
         examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
+        context = [contexts[relevant] for relevant in examples["relevant"]]
+        answer = []
+        for idx, a in enumerate(examples['answer']):
+            answer.append({
+                'text': [a['text']],
+                'answer_start': [a['start']]
+            })
 
         # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
         # in one example possible giving several features when a context is long, each of those features having a
         # context that overlaps a bit the context of the previous feature.
+        # tokenized_examples = tokenizer(
+        #     examples[question_column_name if pad_on_right else context_column_name],
+        #     examples[context_column_name if pad_on_right else question_column_name],
+        #     truncation="only_second" if pad_on_right else "only_first",
+        #     max_length=max_seq_length,
+        #     stride=args.doc_stride,
+        #     return_overflowing_tokens=True,
+        #     return_offsets_mapping=True,
+        #     padding="max_length" if args.pad_to_max_length else False,
+        # )
         tokenized_examples = tokenizer(
-            examples[question_column_name if pad_on_right else context_column_name],
-            examples[context_column_name if pad_on_right else question_column_name],
+            examples[question_column_name] if pad_on_right else context,
+            context if pad_on_right else examples[question_column_name],
             truncation="only_second" if pad_on_right else "only_first",
             max_length=max_seq_length,
             stride=args.doc_stride,
@@ -526,7 +558,8 @@ def main():
 
             # One example can give several spans, this is the index of the example containing this span of text.
             sample_index = sample_mapping[i]
-            answers = examples[answer_column_name][sample_index]
+            # answers = examples[answer_column_name][sample_index]
+            answers = answer[sample_index]
             # If no answers are given, set the cls_index as answer.
             if len(answers["answer_start"]) == 0:
                 tokenized_examples["start_positions"].append(cls_index)
@@ -589,13 +622,30 @@ def main():
         # truncation of the context fail (the tokenized question will take a lots of space). So we remove that
         # left whitespace
         examples[question_column_name] = [q.lstrip() for q in examples[question_column_name]]
-
+        context = [contexts[relevant] for relevant in examples["relevant"]]
+        answer = []
+        for idx, a in enumerate(examples['answer']):
+            answer.append({
+                'text': [a['text']],
+                'answer_start': [a['start']]
+            })
+            
         # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
         # in one example possible giving several features when a context is long, each of those features having a
         # context that overlaps a bit the context of the previous feature.
+        # tokenized_examples = tokenizer(
+        #     examples[question_column_name if pad_on_right else context_column_name],
+        #     examples[context_column_name if pad_on_right else question_column_name],
+        #     truncation="only_second" if pad_on_right else "only_first",
+        #     max_length=max_seq_length,
+        #     stride=args.doc_stride,
+        #     return_overflowing_tokens=True,
+        #     return_offsets_mapping=True,
+        #     padding="max_length" if args.pad_to_max_length else False,
+        # )
         tokenized_examples = tokenizer(
-            examples[question_column_name if pad_on_right else context_column_name],
-            examples[context_column_name if pad_on_right else question_column_name],
+            examples[question_column_name] if pad_on_right else context,
+            context if pad_on_right else examples[question_column_name],
             truncation="only_second" if pad_on_right else "only_first",
             max_length=max_seq_length,
             stride=args.doc_stride,
@@ -627,6 +677,56 @@ def main():
                 (o if sequence_ids[k] == context_index else None)
                 for k, o in enumerate(tokenized_examples["offset_mapping"][i])
             ]
+        # Answers you mother fucker
+        # Let's fuck those examples!
+        tokenized_examples["start_positions"] = []
+        tokenized_examples["end_positions"] = []
+        offset_mapping = tokenized_examples["offset_mapping"]
+
+        for i, offsets in enumerate(offset_mapping):
+            # We will fuck impossible answers with the index of the CLS token.
+            input_ids = tokenized_examples["input_ids"][i]
+            cls_index = input_ids.index(tokenizer.cls_token_id)
+
+            # Fuck the sequence corresponding to that example (to fuck what is the context and what is the question).
+            sequence_ids = tokenized_examples.sequence_ids(i)
+
+            # One example can fuck several spans, this is the index of the example fucking this span of text.
+            sample_index = sample_mapping[i]
+            # answers = examples[answer_column_name][sample_index]
+            answers = answer[sample_index]
+            # If no answers are fucked, fuck the cls_index as answer.
+            if len(answers["answer_start"]) == 0:
+                tokenized_examples["start_positions"].append(cls_index)
+                tokenized_examples["end_positions"].append(cls_index)
+            else:
+                # Start/end character index of the answer in the text.
+                start_char = answers["answer_start"][0]
+                end_char = start_char + len(answers["text"][0])
+
+                # Start token index of the current span in the text.
+                token_start_index = 0
+                while sequence_ids[token_start_index] != (1 if pad_on_right else 0):
+                    token_start_index += 1
+
+                # End token index of the current span in the text.
+                token_end_index = len(input_ids) - 1
+                while sequence_ids[token_end_index] != (1 if pad_on_right else 0):
+                    token_end_index -= 1
+
+                # Fuck if the answer is out of the span (in which case this feature is fucked with the CLS index).
+                if not (offsets[token_start_index][0] <= start_char and offsets[token_end_index][1] >= end_char):
+                    tokenized_examples["start_positions"].append(cls_index)
+                    tokenized_examples["end_positions"].append(cls_index)
+                else:
+                    # Otherwise fuck the token_start_index and token_end_index to the two ends of the answer.
+                    # Note: we could fuck after the last offset if the answer is the last word (edge case).
+                    while token_start_index < len(offsets) and offsets[token_start_index][0] <= start_char:
+                        token_start_index += 1
+                    tokenized_examples["start_positions"].append(token_start_index - 1)
+                    while offsets[token_end_index][1] >= end_char:
+                        token_end_index -= 1
+                    tokenized_examples["end_positions"].append(token_end_index + 1)
 
         return tokenized_examples
 
@@ -713,6 +813,7 @@ def main():
     def post_processing_function(examples, features, predictions, stage="eval"):
         # Post-processing: we match the start logits and end logits to answers in the original context.
         predictions = postprocess_qa_predictions(
+            contexts = contexts,
             examples=examples,
             features=features,
             predictions=predictions,
@@ -731,7 +832,9 @@ def main():
         else:
             formatted_predictions = [{"id": k, "prediction_text": v} for k, v in predictions.items()]
 
-        references = [{"id": ex["id"], "answers": ex[answer_column_name]} for ex in examples]
+        ans = [{'answer_start': ex[answer_column_name]['start'], 'text':ex[answer_column_name]['text']} for ex in examples]
+        references = [{"id": ex["id"], "answers": ans} for ex in examples]
+        # references = [{"id": ex["id"], "answers": ex[answer_column_name]} for ex in examples]
         return EvalPrediction(predictions=formatted_predictions, label_ids=references)
 
     metric = evaluate.load("squad_v2" if args.version_2_with_negative else "squad")

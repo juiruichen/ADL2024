@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def postprocess_qa_predictions(
+    contexts,
     examples,
     features,
     predictions: Tuple[np.ndarray, np.ndarray],
@@ -176,7 +177,8 @@ def postprocess_qa_predictions(
             predictions.append(min_null_prediction)
 
         # Use the offsets to gather the answer text in the original context.
-        context = example["context"]
+        # context = example["context"]
+        context = contexts[example["relevant"]]
         for pred in predictions:
             offsets = pred.pop("offsets")
             pred["text"] = context[offsets[0] : offsets[1]]
